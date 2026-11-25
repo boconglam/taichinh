@@ -180,6 +180,69 @@ export interface ParsedQrPayment {
   note: string;
   accountNumber: string;
   bankBin: string;
+  recipientName?: string;
+}
+
+export interface BankingAppOption {
+  appId: string;
+  appName: string;
+  bin: string;
+}
+
+export const VIETNAM_BANK_APPS: BankingAppOption[] = [
+  { appId: 'vba', appName: 'Agribank Plus', bin: '970405' },
+  { appId: 'vcb', appName: 'VCB Digibank', bin: '970436' },
+  { appId: 'tcb', appName: 'Techcombank Mobile', bin: '970407' },
+  { appId: 'mb', appName: 'MB Bank', bin: '970422' },
+  { appId: 'bidv', appName: 'BIDV SmartBanking', bin: '970418' },
+  { appId: 'icb', appName: 'VietinBank iPay', bin: '970415' },
+  { appId: 'acb', appName: 'ACB ONE', bin: '970416' },
+  { appId: 'vpb', appName: 'VPBank NEO', bin: '970432' },
+  { appId: 'tpb', appName: 'TPBank Mobile', bin: '970423' },
+  { appId: 'stb', appName: 'Sacombank Pay', bin: '970403' },
+  { appId: 'vib', appName: 'MyVIB', bin: '970441' },
+  { appId: 'hdb', appName: 'HDBank', bin: '970437' },
+  { appId: 'msb', appName: 'MSB mBank', bin: '970426' },
+  { appId: 'ocb', appName: 'OCB OMNI', bin: '970448' },
+  { appId: 'seab', appName: 'SeAMobile', bin: '970440' },
+  { appId: 'lpb', appName: 'LPBank', bin: '970449' },
+  { appId: 'momo', appName: 'Ví MoMo', bin: '971025' },
+  { appId: 'zalopay', appName: 'ZaloPay', bin: '971033' },
+];
+
+export function buildBankTransferDeepLink(params: {
+  appId: string;
+  bankBin: string;
+  accountNumber: string;
+  amount?: number | null;
+  note?: string;
+}): string {
+  const safeAppId = params.appId.replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'vcb';
+  const safeBin = params.bankBin.replace(/\D/g, '');
+  const safeAccount = params.accountNumber.replace(/[^a-zA-Z0-9]/g, '');
+  const safeAmount =
+    params.amount && Number.isFinite(params.amount) && params.amount > 0
+      ? Math.round(params.amount)
+      : 0;
+  const safeNote = (params.note || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9 ._-]/g, ' ')
+    .trim()
+    .slice(0, 50);
+
+  const query = new URLSearchParams();
+  query.set('app', safeAppId);
+  if (safeAccount && safeBin) {
+    query.set('ba', `${safeAccount}@${safeBin}`);
+  }
+  if (safeAmount > 0) {
+    query.set('am', String(safeAmount));
+  }
+  if (safeNote) {
+    query.set('tn', safeNote);
+  }
+  return `https://dl.vietqr.io/pay?${query.toString()}`;
 }
 
 function parseTlvMap(str: string): Record<string, string> {
@@ -209,16 +272,41 @@ export function parseQrPayload(raw: string): ParsedQrPayment {
       note: extra['08'] || extra['05'] || 'Thanh toán QR',
       bankBin: bank['00'] || '',
       accountNumber: bank['01'] || '',
+      recipientName: root['59'] || undefined,
     };
   }
 
+  // Parse VietQR URL format if scanned
+  if (/^https?:\/\/dl\.vietqr\.io\/pay/i.test(trimmed)) {
+    try {
+      const url = new URL(trimmed);
+      const ba = url.searchParams.get('ba') || '';
+      const [acc = '', bin = ''] = ba.split('@');
+      const am = Number(url.searchParams.get('am') || 0);
+      return {
+        raw: trimmed,
+        amount: am > 0 && !Number.isNaN(am) ? am : null,
+        note: url.searchParams.get('tn') || 'Thanh toán VietQR',
+        bankBin: bin.replace(/\D/g, ''),
+        accountNumber: acc.replace(/[^a-zA-Z0-9]/g, ''),
+      };
+    } catch {
+      // fall through
+    }
+  }
+
   try {
-    const parsed = JSON.parse(trimmed) as { amount?: number; note?: string; account?: string };
+    const parsed = JSON.parse(trimmed) as {
+      amount?: number;
+      note?: string;
+      account?: string;
+      bankBin?: string;
+    };
     return {
       raw: trimmed,
       amount: typeof parsed.amount === 'number' ? parsed.amount : null,
       note: parsed.note || 'Thanh toán QR',
-      bankBin: '',
+      bankBin: parsed.bankBin || '',
       accountNumber: parsed.account || '',
     };
   } catch {

@@ -1,12 +1,28 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Camera, CheckCircle2, Download, QrCode, RefreshCw, Save, Upload, X } from 'lucide-react';
+import {
+  ArrowUpRight,
+  Camera,
+  Check,
+  CheckCircle2,
+  Copy,
+  Download,
+  ExternalLink,
+  QrCode,
+  RefreshCw,
+  Save,
+  ShieldCheck,
+  Upload,
+  X,
+} from 'lucide-react';
 import type { TranslationDict } from '../i18n/translations';
 import {
+  buildBankTransferDeepLink,
   buildVietQrPayload,
   decodeQrFromImageFile,
   decodeQrFromVideo,
   parseQrPayload,
   renderQrToDataUrl,
+  VIETNAM_BANK_APPS,
   type BankOption,
   type ParsedQrPayment,
 } from '../lib/qrUtils';
@@ -23,6 +39,8 @@ interface Props {
   t: TranslationDict;
   onCreateTransactionFromQr: (parsed: ParsedQrPayment) => void;
 }
+
+type TransferHandoffStep = 'review' | 'asking_permission' | 'launched';
 
 export const QRModal: React.FC<Props> = ({
   isOpen,
@@ -44,23 +62,35 @@ export const QRModal: React.FC<Props> = ({
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [savedNotice, setSavedNotice] = useState(false);
 
+  const [scanning, setScanning] = useState(false);
+  const [cameraError, setCameraError] = useState('');
+  const [rawInput, setRawInput] = useState('');
+  const [parsedResult, setParsedResult] = useState<ParsedQrPayment | null>(null);
+
+  // Scan -> Bank Transfer Permission & Handoff state
+  const [scanBin, setScanBin] = useState('');
+  const [scanAccount, setScanAccount] = useState('');
+  const [scanAmount, setScanAmount] = useState('');
+  const [scanNote, setScanNote] = useState('');
+  const [selectedAppId, setSelectedAppId] = useState('vba');
+  const [transferStep, setTransferStep] = useState<TransferHandoffStep>('review');
+  const [launchedUrl, setLaunchedUrl] = useState('');
+  const [copiedAccount, setCopiedAccount] = useState(false);
+
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const rafRef = useRef<number | null>(null);
+
   useEffect(() => {
     if (isOpen) {
       setBankBin(privateInfo.bankBin || '970405');
       setAccountNumber(privateInfo.bankAccount || '');
       setAccountHolder(privateInfo.accountHolder || '');
       setSavedNotice(false);
+      setCameraError('');
+      setTransferStep('review');
     }
   }, [isOpen, privateInfo.bankBin, privateInfo.bankAccount, privateInfo.accountHolder]);
-
-  const [scanning, setScanning] = useState(false);
-  const [cameraError, setCameraError] = useState('');
-  const [rawInput, setRawInput] = useState('');
-  const [parsedResult, setParsedResult] = useState<ParsedQrPayment | null>(null);
-
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!isOpen || tab !== 'generate') return;
@@ -98,6 +128,22 @@ export const QRModal: React.FC<Props> = ({
     return () => stopCamera();
   }, [isOpen]);
 
+  const applyScannedResult = (parsed: ParsedQrPayment) => {
+    setParsedResult(parsed);
+    setScanBin(parsed.bankBin || '');
+    setScanAccount(parsed.accountNumber || '');
+    setScanAmount(parsed.amount && parsed.amount > 0 ? String(parsed.amount) : '');
+    setScanNote(parsed.note || 'Thanh toan QR');
+    const preferredApp =
+      VIETNAM_BANK_APPS.find((app) => app.bin === privateInfo.bankBin) ||
+      VIETNAM_BANK_APPS.find((app) => app.bin === parsed.bankBin) ||
+      VIETNAM_BANK_APPS[0];
+    setSelectedAppId(preferredApp.appId);
+    setTransferStep('review');
+    setLaunchedUrl('');
+    setCopiedAccount(false);
+  };
+
   const startCamera = async () => {
     setCameraError('');
     setParsedResult(null);
@@ -119,7 +165,7 @@ export const QRModal: React.FC<Props> = ({
         if (!videoRef.current || !streamRef.current) return;
         const decoded = decodeQrFromVideo(videoRef.current);
         if (decoded) {
-          setParsedResult(parseQrPayload(decoded));
+          applyScannedResult(parseQrPayload(decoded));
           stopCamera();
           return;
         }
@@ -138,7 +184,7 @@ export const QRModal: React.FC<Props> = ({
     setCameraError('');
     const decoded = await decodeQrFromImageFile(file);
     if (decoded) {
-      setParsedResult(parseQrPayload(decoded));
+      applyScannedResult(parseQrPayload(decoded));
     } else {
       setCameraError('Không tìm thấy mã QR hợp lệ trong ảnh.');
     }
@@ -152,7 +198,63 @@ export const QRModal: React.FC<Props> = ({
     link.click();
   };
 
+  const handleCopyAccount = async () => {
+    if (!scanAccount) return;
+    try {
+      await navigator.clipboard.writeText(scanAccount);
+      setCopiedAccount(true);
+      setTimeout(() => setCopiedAccount(false), 2000);
+    } catch {
+      // ignore clipboard restrictions
+    }
+  };
+
+  const buildCurrentParsed = (): ParsedQrPayment => {
+    const numericAmount = Number(scanAmount);
+    const matchedBank = banks.find((b) => b.bin === scanBin);
+    const bankLabel = matchedBank?.shortName || scanBin;
+    const baseNote = scanNote.trim() || 'Thanh toán QR';
+    const fullNote = scanAccount
+      ? `${baseNote} (${bankLabel ? `${bankLabel} - ` : ''}${scanAccount})`
+      : baseNote;
+    return {
+      raw: parsedResult?.raw || rawInput,
+      amount: numericAmount > 0 ? numericAmount : parsedResult?.amount || null,
+      note: fullNote.slice(0, 140),
+      accountNumber: scanAccount.trim(),
+      bankBin: scanBin.trim(),
+      recipientName: parsedResult?.recipientName,
+    };
+  };
+
+  const handleAllowAndLaunchBankApp = () => {
+    const numericAmount = Number(scanAmount);
+    const deepLink = buildBankTransferDeepLink({
+      appId: selectedAppId,
+      bankBin: scanBin,
+      accountNumber: scanAccount,
+      amount: numericAmount > 0 ? numericAmount : parsedResult?.amount || 0,
+      note: scanNote,
+    });
+    setLaunchedUrl(deepLink);
+    setTransferStep('launched');
+
+    // Trigger deep link without window.open via user-initiated anchor click
+    const link = document.createElement('a');
+    link.href = deepLink;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   if (!isOpen) return null;
+
+  const recipientBankOption = banks.find((b) => b.bin === scanBin);
+  const selectedApp =
+    VIETNAM_BANK_APPS.find((a) => a.appId === selectedAppId) || VIETNAM_BANK_APPS[0];
+  const displayAmount = Number(scanAmount) > 0 ? Number(scanAmount) : parsedResult?.amount || 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
@@ -394,7 +496,7 @@ export const QRModal: React.FC<Props> = ({
                   type="button"
                   onClick={() => {
                     if (rawInput.trim()) {
-                      setParsedResult(parseQrPayload(rawInput));
+                      applyScannedResult(parseQrPayload(rawInput));
                     }
                   }}
                   className="px-3.5 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 text-xs font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800"
@@ -404,30 +506,245 @@ export const QRModal: React.FC<Props> = ({
               </div>
             </div>
 
-            {parsedResult && (
+            {parsedResult && transferStep === 'review' && (
               <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5 space-y-3">
-                <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 text-sm font-medium">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>{t.qrDetected}</span>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 text-sm font-medium">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    <span>{t.qrDetected}</span>
+                  </div>
+                  {scanAccount && (
+                    <button
+                      type="button"
+                      onClick={handleCopyAccount}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-teal-600 dark:text-teal-400 hover:underline"
+                    >
+                      {copiedAccount ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedAccount ? t.copiedLabel : t.copyAccount}</span>
+                    </button>
+                  )}
                 </div>
-                <div className="text-xs text-slate-600 dark:text-zinc-300 space-y-1 font-mono">
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div>
-                    {t.amount}: {parsedResult.amount ? parsedResult.amount.toLocaleString() : 'N/A'}
+                    <label className="block text-[11px] text-slate-500 dark:text-zinc-400 mb-1">
+                      {t.recipientBank}
+                    </label>
+                    <select
+                      value={scanBin}
+                      onChange={(e) => setScanBin(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-xs text-slate-900 dark:text-zinc-100"
+                    >
+                      <option value="">{scanBin || '-'}</option>
+                      {banks.map((b) => (
+                        <option key={b.bin} value={b.bin}>
+                          {b.shortName} ({b.bin})
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div>
-                    {t.note}: {parsedResult.note}
+                    <label className="block text-[11px] text-slate-500 dark:text-zinc-400 mb-1">
+                      {t.accountNumber}
+                    </label>
+                    <input
+                      type="text"
+                      value={scanAccount}
+                      onChange={(e) => setScanAccount(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-xs font-mono text-slate-900 dark:text-zinc-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-500 dark:text-zinc-400 mb-1">
+                      {t.amount}
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={scanAmount}
+                      placeholder={t.transferAmountHint}
+                      onChange={(e) => setScanAmount(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-xs font-mono text-slate-900 dark:text-zinc-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-500 dark:text-zinc-400 mb-1">
+                      {t.note}
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={50}
+                      value={scanNote}
+                      onChange={(e) => setScanNote(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-xs text-slate-900 dark:text-zinc-100"
+                    />
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onCreateTransactionFromQr(parsedResult);
-                    onClose();
-                  }}
-                  className="w-full px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium transition-colors"
-                >
-                  {t.applyQrToTransaction}
-                </button>
+
+                {parsedResult.recipientName && (
+                  <div className="text-xs text-slate-600 dark:text-zinc-300">
+                    {t.recipientNameLabel}: <span className="font-medium">{parsedResult.recipientName}</span>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-600 dark:text-zinc-400 mb-1">
+                    {t.selectBankApp}
+                  </label>
+                  <select
+                    value={selectedAppId}
+                    onChange={(e) => setSelectedAppId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-xs font-medium text-slate-900 dark:text-zinc-100"
+                  >
+                    {VIETNAM_BANK_APPS.map((app) => (
+                      <option key={app.appId} value={app.appId}>
+                        {app.appName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setTransferStep('asking_permission')}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium transition-colors"
+                  >
+                    <ArrowUpRight className="w-4 h-4" />
+                    <span>{t.openBankAppBtn}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onCreateTransactionFromQr(buildCurrentParsed());
+                      onClose();
+                    }}
+                    className="px-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800 text-xs font-medium text-slate-700 dark:text-zinc-200 transition-colors"
+                  >
+                    {t.applyQrToTransaction}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {parsedResult && transferStep === 'asking_permission' && (
+              <div className="p-4 rounded-xl border border-amber-500/40 bg-amber-50/70 dark:bg-amber-950/25 space-y-3">
+                <div className="flex items-start gap-2.5">
+                  <ShieldCheck className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-semibold text-slate-900 dark:text-zinc-100">
+                      {t.bankPermissionTitle}
+                    </h3>
+                    <p className="text-xs text-slate-600 dark:text-zinc-300 leading-relaxed">
+                      {t.bankPermissionDesc}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-lg bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-xs space-y-1.5">
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-500 dark:text-zinc-400">{t.selectBankApp}:</span>
+                    <span className="font-semibold text-teal-600 dark:text-teal-400">
+                      {selectedApp.appName}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-500 dark:text-zinc-400">{t.recipientBank}:</span>
+                    <span className="font-medium text-slate-900 dark:text-zinc-100">
+                      {recipientBankOption?.shortName || scanBin || '-'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-500 dark:text-zinc-400">{t.accountNumber}:</span>
+                    <span className="font-mono tabular-nums font-medium text-slate-900 dark:text-zinc-100">
+                      {scanAccount || '-'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-500 dark:text-zinc-400">{t.amount}:</span>
+                    <span className="font-mono tabular-nums font-semibold text-slate-900 dark:text-zinc-100">
+                      {displayAmount > 0 ? displayAmount.toLocaleString() : 'N/A'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-500 dark:text-zinc-400">{t.note}:</span>
+                    <span className="text-slate-700 dark:text-zinc-300 truncate max-w-[220px]">
+                      {scanNote || '-'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setTransferStep('review')}
+                    className="px-3.5 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800"
+                  >
+                    {t.denyPermission}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAllowAndLaunchBankApp}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>{t.allowAndTransfer}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {parsedResult && transferStep === 'launched' && (
+              <div className="p-4 rounded-xl border border-teal-500/30 bg-teal-500/5 space-y-3">
+                <div className="flex items-start gap-2.5 text-xs text-slate-700 dark:text-zinc-200">
+                  <CheckCircle2 className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0 mt-0.5" />
+                  <span>{t.bankAppLaunchedNotice}</span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {launchedUrl && (
+                    <a
+                      href={launchedUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>{t.openFallbackLink}</span>
+                    </a>
+                  )}
+                  {scanAccount && (
+                    <button
+                      type="button"
+                      onClick={handleCopyAccount}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800"
+                    >
+                      {copiedAccount ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedAccount ? t.copiedLabel : t.copyAccount}</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTransferStep('review')}
+                    className="px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 text-xs font-medium text-slate-600 dark:text-zinc-300"
+                  >
+                    {t.cancel}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onCreateTransactionFromQr(buildCurrentParsed());
+                      onClose();
+                    }}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>{t.confirmTransferDone}</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>

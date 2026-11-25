@@ -179,6 +179,20 @@ export interface TranslationDict {
   savedSuccess: string;
   unitProfitLabel: string;
   emptyInventory: string;
+  selectBankApp: string;
+  recipientBank: string;
+  recipientNameLabel: string;
+  openBankAppBtn: string;
+  bankPermissionTitle: string;
+  bankPermissionDesc: string;
+  denyPermission: string;
+  allowAndTransfer: string;
+  bankAppLaunchedNotice: string;
+  copyAccount: string;
+  copiedLabel: string;
+  confirmTransferDone: string;
+  openFallbackLink: string;
+  transferAmountHint: string;
 }
 
 const vi: TranslationDict = {
@@ -360,6 +374,22 @@ const vi: TranslationDict = {
   savedSuccess: 'Đã lưu dữ liệu thực tế',
   unitProfitLabel: 'Lãi/SP',
   emptyInventory: 'Chưa có sản phẩm nào trong kho.',
+  selectBankApp: 'Chọn ứng dụng ngân hàng chuyển khoản',
+  recipientBank: 'Ngân hàng nhận',
+  recipientNameLabel: 'Người nhận',
+  openBankAppBtn: 'Mở app ngân hàng chuyển khoản',
+  bankPermissionTitle: 'Yêu cầu quyền mở ứng dụng ngân hàng',
+  bankPermissionDesc:
+    'Cho phép ứng dụng chuyển sang ứng dụng ngân hàng trên thiết bị để thực hiện chuyển khoản với thông tin sau:',
+  denyPermission: 'Từ chối',
+  allowAndTransfer: 'Cho phép mở app & Chuyển khoản',
+  bankAppLaunchedNotice:
+    'Đã chuyển yêu cầu mở ứng dụng ngân hàng. Sau khi hoàn tất chuyển khoản, bạn có thể ghi lại giao dịch.',
+  copyAccount: 'Sao chép STK',
+  copiedLabel: 'Đã chép',
+  confirmTransferDone: 'Đã chuyển xong · Ghi sổ quỹ',
+  openFallbackLink: 'Mở lại liên kết ngân hàng',
+  transferAmountHint: 'Nhập số tiền nếu mã QR chưa có sẵn số tiền',
 };
 
 const en: TranslationDict = {
@@ -541,6 +571,22 @@ const en: TranslationDict = {
   savedSuccess: 'Saved to storage & cloud',
   unitProfitLabel: 'Unit Profit',
   emptyInventory: 'No inventory products added yet.',
+  selectBankApp: 'Select Banking App',
+  recipientBank: 'Recipient Bank',
+  recipientNameLabel: 'Recipient',
+  openBankAppBtn: 'Open Banking App to Transfer',
+  bankPermissionTitle: 'Permission to Open Banking App',
+  bankPermissionDesc:
+    'Allow this app to open your banking app with the following pre-filled transfer details:',
+  denyPermission: 'Deny',
+  allowAndTransfer: 'Allow & Open Bank App',
+  bankAppLaunchedNotice:
+    'Banking app handoff triggered. Once transfer completes, log the transaction below.',
+  copyAccount: 'Copy Account',
+  copiedLabel: 'Copied',
+  confirmTransferDone: 'Transfer Done · Log Entry',
+  openFallbackLink: 'Re-open Banking Link',
+  transferAmountHint: 'Enter amount if the scanned QR does not include one',
 };
 
 const ja: TranslationDict = {
