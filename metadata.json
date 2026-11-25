@@ -1,0 +1,8 @@
+{
+  "name": "QUẢN LÝ TÀI CHÍNH",
+  "description": "Ứng dụng quản lý chi tiêu cá nhân, thu chi kinh doanh nhỏ, tồn kho, công nợ và so sánh thu nhập gia đình hỗ trợ ngoại tuyến và đồng bộ đám mây.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": []
+}
