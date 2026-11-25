@@ -173,6 +173,12 @@ export interface TranslationDict {
   bankFullNamePlaceholder: string;
   banksSyncedSuccess: string;
   banksSyncError: string;
+  overviewBankQrTitle: string;
+  overviewProductCostTitle: string;
+  saveBankAccount: string;
+  savedSuccess: string;
+  unitProfitLabel: string;
+  emptyInventory: string;
 }
 
 const vi: TranslationDict = {
@@ -348,6 +354,12 @@ const vi: TranslationDict = {
   bankFullNamePlaceholder: 'Tên đầy đủ ngân hàng',
   banksSyncedSuccess: 'Đã cập nhật danh sách ngân hàng mới nhất.',
   banksSyncError: 'Không thể kết nối máy chủ ngân hàng. Đang dùng danh sách ngoại tuyến.',
+  overviewBankQrTitle: 'Mã QR & Tài khoản ngân hàng thực tế',
+  overviewProductCostTitle: 'Giá thành & Giá bán sản phẩm thực tế',
+  saveBankAccount: 'Lưu tài khoản',
+  savedSuccess: 'Đã lưu dữ liệu thực tế',
+  unitProfitLabel: 'Lãi/SP',
+  emptyInventory: 'Chưa có sản phẩm nào trong kho.',
 };
 
 const en: TranslationDict = {
@@ -523,6 +535,12 @@ const en: TranslationDict = {
   bankFullNamePlaceholder: 'Full bank name',
   banksSyncedSuccess: 'Updated live bank directory.',
   banksSyncError: 'Could not reach bank directory. Using offline cached list.',
+  overviewBankQrTitle: 'Saved Bank Account & Payment QR',
+  overviewProductCostTitle: 'Real Product Cost & Pricing',
+  saveBankAccount: 'Save Account',
+  savedSuccess: 'Saved to storage & cloud',
+  unitProfitLabel: 'Unit Profit',
+  emptyInventory: 'No inventory products added yet.',
 };
 
 const ja: TranslationDict = {

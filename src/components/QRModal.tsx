@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Camera, CheckCircle2, Download, QrCode, RefreshCw, Upload, X } from 'lucide-react';
+import { Camera, CheckCircle2, Download, QrCode, RefreshCw, Save, Upload, X } from 'lucide-react';
 import type { TranslationDict } from '../i18n/translations';
 import {
   buildVietQrPayload,
@@ -19,6 +19,7 @@ interface Props {
   banks: BankOption[];
   syncingBanks: boolean;
   onSyncBanks: () => void;
+  onUpdatePrivateInfo: (patch: Partial<UserPrivateInfo>) => void;
   t: TranslationDict;
   onCreateTransactionFromQr: (parsed: ParsedQrPayment) => void;
 }
@@ -30,15 +31,27 @@ export const QRModal: React.FC<Props> = ({
   banks,
   syncingBanks,
   onSyncBanks,
+  onUpdatePrivateInfo,
   t,
   onCreateTransactionFromQr,
 }) => {
   const [tab, setTab] = useState<'generate' | 'scan'>('generate');
   const [bankBin, setBankBin] = useState(privateInfo.bankBin || '970405');
   const [accountNumber, setAccountNumber] = useState(privateInfo.bankAccount || '0011009876543');
+  const [accountHolder, setAccountHolder] = useState(privateInfo.accountHolder || '');
   const [amount, setAmount] = useState('250000');
   const [note, setNote] = useState('Thanh toan don hang');
   const [qrDataUrl, setQrDataUrl] = useState('');
+  const [savedNotice, setSavedNotice] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setBankBin(privateInfo.bankBin || '970405');
+      setAccountNumber(privateInfo.bankAccount || '');
+      setAccountHolder(privateInfo.accountHolder || '');
+      setSavedNotice(false);
+    }
+  }, [isOpen, privateInfo.bankBin, privateInfo.bankAccount, privateInfo.accountHolder]);
 
   const [scanning, setScanning] = useState(false);
   const [cameraError, setCameraError] = useState('');
@@ -235,6 +248,17 @@ export const QRModal: React.FC<Props> = ({
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-600 dark:text-zinc-400 mb-1">
+                  {t.accountHolder}
+                </label>
+                <input
+                  type="text"
+                  value={accountHolder}
+                  onChange={(e) => setAccountHolder(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-sm text-slate-900 dark:text-zinc-100"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-zinc-400 mb-1">
                   {t.amount}
                 </label>
                 <input
@@ -257,6 +281,24 @@ export const QRModal: React.FC<Props> = ({
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-sm text-slate-900 dark:text-zinc-100"
                 />
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const bank = banks.find((b) => b.bin === bankBin);
+                  onUpdatePrivateInfo({
+                    bankBin,
+                    bankName: bank?.shortName || privateInfo.bankName,
+                    bankAccount: accountNumber.trim(),
+                    accountHolder: accountHolder.trim(),
+                  });
+                  setSavedNotice(true);
+                  setTimeout(() => setSavedNotice(false), 3000);
+                }}
+                className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-teal-600/30 bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 text-xs font-medium hover:bg-teal-100 dark:hover:bg-teal-950/70 transition-colors"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>{savedNotice ? t.savedSuccess : t.saveBankAccount}</span>
+              </button>
             </div>
 
             <div className="flex flex-col items-center space-y-3 p-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950">
@@ -270,6 +312,13 @@ export const QRModal: React.FC<Props> = ({
               ) : (
                 <div className="w-48 h-48 rounded-lg bg-slate-200 dark:bg-zinc-800 animate-pulse" />
               )}
+              <div className="text-center text-xs text-slate-600 dark:text-zinc-400">
+                <div className="font-medium text-slate-900 dark:text-zinc-100">
+                  {banks.find((b) => b.bin === bankBin)?.shortName || privateInfo.bankName}
+                </div>
+                <div className="font-mono tabular-nums">{accountNumber}</div>
+                {accountHolder && <div>{accountHolder}</div>}
+              </div>
               <button
                 type="button"
                 onClick={handleDownload}

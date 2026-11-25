@@ -721,7 +721,8 @@ export async function cloudUpdateProfile(uid: string, profile: UserProfile): Pro
 export async function cloudUpdatePrivateInfo(uid: string, info: UserPrivateInfo): Promise<void> {
   const path = `users/${uid}/private/info`;
   try {
-    await updateDoc(doc(db, 'users', uid, 'private', 'info'), {
+    await setDoc(doc(db, 'users', uid, 'private', 'info'), {
+      uid,
       email: sanitizeText(info.email, 200),
       bankBin: sanitizeText(info.bankBin, 20),
       bankName: sanitizeText(info.bankName, 80),
@@ -730,6 +731,6 @@ export async function cloudUpdatePrivateInfo(uid: string, info: UserPrivateInfo)
       updatedAt: serverTimestamp(),
     });
   } catch (err) {
-    handleFirestoreError(err, OperationType.UPDATE, path);
+    handleFirestoreError(err, OperationType.WRITE, path);
   }
 }

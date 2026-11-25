@@ -859,6 +859,8 @@ function MainApp() {
               inventory={data.inventory}
               debts={data.debts}
               familyMembers={data.familyMembers}
+              privateInfo={data.privateInfo}
+              banks={banks}
               currency={data.profile.currency}
               hideAmounts={hideAmounts}
               canEdit={canEdit}
@@ -870,6 +872,8 @@ function MainApp() {
               }}
               onOpenQr={() => setQrModalOpen(true)}
               onNavigate={setActiveTab}
+              onUpdatePrivateInfo={handleUpdatePrivateInfo}
+              onSaveInventory={handleSaveInventory}
             />
           )}
 
@@ -981,6 +985,7 @@ function MainApp() {
         banks={banks}
         syncingBanks={syncingBanks}
         onSyncBanks={handleSyncBanks}
+        onUpdatePrivateInfo={handleUpdatePrivateInfo}
         t={t}
         onCreateTransactionFromQr={handleCreateTransactionFromQr}
       />
